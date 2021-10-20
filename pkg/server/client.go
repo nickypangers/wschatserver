@@ -28,15 +28,17 @@ var upgrader = websocket.Upgrader{
 }
 
 type Client struct {
-	hub  *Hub
-	conn *websocket.Conn
-	send chan []byte
+	hub     *Hub
+	conn    *websocket.Conn
+	send    chan []byte
+	Address string
 }
 
 type ChatMessage struct {
-	Address string    `json:"address"`
-	Message string    `json:"message"`
-	Time    time.Time `json:"time"`
+	Address     string    `json:"address"`
+	Message     string    `json:"message"`
+	Time        time.Time `json:"time"`
+	DisplayTime string    `json:"displayTime"`
 }
 
 func (c *Client) readPump() {
@@ -57,7 +59,8 @@ func (c *Client) readPump() {
 			break
 		}
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		chatMessage := ChatMessage{Address: c.conn.RemoteAddr().String(), Message: string(message), Time: time.Now()}
+		displayTime := time.Now().Format("15:04")
+		chatMessage := ChatMessage{Address: c.Address, Message: string(message), Time: time.Now(), DisplayTime: displayTime}
 		log.Println(chatMessage)
 		buf, err := json.Marshal(chatMessage)
 		if err != nil {
@@ -112,14 +115,14 @@ func (c *Client) writePump() {
 
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
-	log.Println(params.Get("address"))
+	address := params.Get("address")
 	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256)}
+	client := &Client{hub: hub, conn: conn, send: make(chan []byte, 256), Address: address}
 	client.hub.register <- client
 
 	// Allow collection of memory referenced by the caller by doing all work in
