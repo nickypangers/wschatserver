@@ -42,7 +42,7 @@ type ChatMessage struct {
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
-	c.conn.Close()
+		c.conn.Close()
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
@@ -111,6 +111,8 @@ func (c *Client) writePump() {
 }
 
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	params := r.URL.Query()
+	log.Println(params.Get("address"))
 	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
