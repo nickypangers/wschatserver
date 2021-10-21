@@ -35,11 +35,23 @@ type Client struct {
 }
 
 type ChatMessage struct {
-	Address     string    `json:"address"`
-	Message     string    `json:"message"`
-	Time        time.Time `json:"time"`
-	DisplayTime string    `json:"displayTime"`
+	MessageType int             `json:"messageType"`
+	Address     string          `json:"address"`
+	Message     string          `json:"message"`
+	Data        CommandResponse `json:"data,omitempty"`
+	Time        time.Time       `json:"time"`
 }
+
+type CommandResponse struct {
+	Command string `json:"command"`
+	Data    string `json:"data"`
+}
+
+const (
+	Command      int = 0
+	Message      int = 1
+	Announcement int = 2
+)
 
 func (c *Client) readPump() {
 	defer func() {
@@ -58,16 +70,42 @@ func (c *Client) readPump() {
 			}
 			break
 		}
+
+		isCommand := isStringCommand(message)
+		if isCommand {
+			address := c.Address
+
+			status := c.processCommand(string(message))
+
+			if !status {
+				continue
+			}
+
+			response := ChatMessage{MessageType: Command, Address: address, Message: "Successfully changed address", Data: CommandResponse{Command: ChangeAddress, Data: c.Address}, Time: time.Now()}
+
+			log.Println(response)
+
+			buf, err := json.Marshal(response)
+			if err != nil {
+				log.Println(err)
+			} else {
+				c.hub.broadcast <- []byte(buf)
+			}
+			continue
+		}
 		message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
-		displayTime := time.Now().Format("15:04")
-		chatMessage := ChatMessage{Address: c.Address, Message: string(message), Time: time.Now(), DisplayTime: displayTime}
+
+		chatMessage := ChatMessage{MessageType: Message, Address: c.Address, Message: string(message), Time: time.Now()}
+
 		log.Println(chatMessage)
+
 		buf, err := json.Marshal(chatMessage)
 		if err != nil {
 			log.Println(err)
 		} else {
 			c.hub.broadcast <- buf
 		}
+
 	}
 }
 
@@ -116,6 +154,7 @@ func (c *Client) writePump() {
 func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	params := r.URL.Query()
 	address := params.Get("address")
+
 	upgrader.CheckOrigin = func(r *http.Request) bool { return true }
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -129,4 +168,15 @@ func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	// new goroutines.
 	go client.writePump()
 	go client.readPump()
+}
+
+func isStringCommand(message []byte) bool {
+	firstChar := string(message[0])
+	if firstChar != "/" {
+		log.Println("is message")
+		return false
+	}
+	log.Println("is command")
+	return true
+
 }
